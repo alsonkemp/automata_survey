@@ -1,0 +1,17 @@
+[package]
+name = "automata_survey"
+version = "0.0.1"
+authors = ["Alson Kemp <alson@alsonkemp.com>"]
+edition = "2018"
+
+[lib]
+name = "automata_survey"
+src = "src/lib.rs"
+
+[dependencies]
+base64     = "*"
+blas-src   = { version = "0.4", features = ["intel-mkl"] }
+gif        = "*"
+ndarray    = { version = "0.13.0", features = ["blas"] }
+rand       = "*"
+rug        = "*"
