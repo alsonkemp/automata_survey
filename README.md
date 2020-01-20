@@ -1,5 +1,7 @@
 # Automata Survey
 
+**Note**: the type of automata is currently hard-coded in *src/main.rs*.
+
 This is a small Rust program that will generate GIFs with the results
 of running random 1D (2D images) or 2D  (3D images/movies) binary automata
 with variable numbers of *neighbors*.
