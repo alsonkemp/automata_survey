@@ -36,13 +36,15 @@ impl TRules for Rules {
     let mut acc = 0u8;
     let mut s = String::from("");
     for (idx, e) in self.indexed_iter() {
-      acc += (e +1).pow(idx as u32);
-      if idx > 0 && (idx + 1) % 8 == 0 {
+      let bit_idx = idx % 8;
+      acc += e << bit_idx;
+      if idx > 0 && bit_idx == 7 {
         v.push(acc);
-        // println!("!acc: {} {} {} {:?}", e, idx, acc, v);
+        // println!("!!!!acc: {} {} {} {} {:?}", e, idx, bit_idx, acc, v);
         acc = 0;
+      } else {
+        //println!("acc: {} {} {} {} {:?}", e, idx, bit_idx, acc, v);
       }
-      // println!("acc: {} {} {} {:?}", e, idx, acc, v);
     }
     for e in &v {
       if bin {
@@ -73,8 +75,12 @@ trait IsInterestingRules {
 
 impl IsInterestingRules for Rules {
   fn get_interesting(&self) -> InterestingRules {
+    let alive = self.iter().filter(|e| **e > 0).count() as f32;
+    let total = self.len() as f32;
+    /* println!("alive, total, alive_ratio: {:?}, {}, {}, {}",
+    self, alive, total, alive/total);*/
     InterestingRules {
-      alive_ratio: self.iter().filter(|e| **e > 0).count() as f32 / self.len() as f32,
+      alive_ratio: alive / total,
     }
   }
 }
@@ -108,103 +114,106 @@ impl Simulation {
     self.iteration + 1 == self.max_iterations
   }
   pub fn path_exists(&self) -> bool {
-    self.path().as_path().exists()
+    let exists = self.path().as_path().exists();
+    if exists {
+      println!("!! Path exists: {:?}.  Skipping...\n", self.path());
+    }
+    exists
   }
   pub fn path(&self) -> PathBuf {
     return Path::new(&format!(
-      "./output/{}/{}/{}:IR:{}:gif",
+      "./output/{}/{}/{}:IR:{}.gif",
       self.automata.dimension,
       self.automata.neighbors,
-      self.automata.rules.to_str(false),
+      self.automata.rules.to_str(true),
       self.automata.rules.get_interesting()
     ))
     .to_path_buf();
   }
-  pub fn iterate(&mut self) {
+  fn iterate_1d(&mut self) {
     let dim0 = self.space.dim()[0] as u32;
-    for i in 0..dim0 - 1 {
+    for i in 0..dim0 {
+      // memos
+      let nei = self.automata.neighbors as u32;
+      let idim0 = i + dim0;
       // Start accumulation with 2**neighbors
       let mut acc: usize = self.space[[self.iteration as usize, i as usize]] as usize
-                            * 2usize.pow(self.automata.neighbors as u32);
-      let ac = self.space[[self.iteration as usize, i as usize]] as usize;
-      let nei = self.automata.neighbors as u32;
+                            * 2usize.pow(nei);
+      let _ac = self.space[[self.iteration as usize, i as usize]] as usize;
       for idx in 0..nei {
-        let l = ((i + dim0 + idx) - idx - 1) % dim0;
-        let r = ((i + dim0 + idx) + idx + 1) % dim0;
+        let l = (idim0 - 1) % dim0;
+        let r = (idim0 + 1) % dim0;
         // neighbors==1 && idx==0 -> 1; neighbors==2 && idx==0 -> 2; neighbors==2 && idx==1 -> 1
         acc += self.space[[self.iteration as usize, l as usize]] as usize
-                * 2usize.pow(nei + idx as u32  - 1u32);
+                * 2usize.pow(nei + idx as u32 - 1u32);
         // neighbors==1 && idx==0 -> 4; neighbors==2 && idx==0 -> 4; neighbors==2 && idx==1 -> 8
         acc += self.space[[self.iteration as usize, r as usize]] as usize
                 * 2usize.pow(idx as u32 + 2u32);
-        if self.iteration < 2 {
-            print!("({},{},{}) {} {} {} -> {} ", l, i, r, 
-            self.space[[self.iteration as usize, l as usize]],
-            ac,
-            self.space[[self.iteration as usize, r as usize]],
-            acc);
-        }
+         /*if self.iteration < 2 {
+           print!("({},{},{}) {} {} {} -> {} ", l, i, r,
+           self.space[[self.iteration as usize, l as usize]],
+           _ac,
+           self.space[[self.iteration as usize, r as usize]],
+           acc);
+        }*/
       }
       let v = self.automata.rules[[acc]];
-      if self.iteration < 2 {
+      /*if self.iteration < 2 {
         print!("-> {}; ", v);
-      }
+      }*/
       // set the value in the *next* plane to the decoded value
       self.space[[1 + self.iteration as usize, i as usize]] = v;
     }
-    if self.iteration < 2 {
+    /*if self.iteration < 2 {
       println!("");
-    }
+    }*/
     self.iteration += 1;
   }
   pub fn iterate_all(&mut self) {
     while !self.is_complete() {
-      self.iterate();
+      self.iterate_1d();
     }
   }
   pub fn initialize_space(&mut self) {
-    let mut s = self.space.slice_mut(s![0.., 0..]);
+    let mut s = self.space.view_mut();
     // Place down a consistent "predicate" pattern.
     // Unsafe-ish (panic) since no range checking is done.
     // 1110010-1-0110011
-    let middle = s.dim().0/2;
-    s[[0, middle - 8]] = 1;
-    s[[0, middle - 6]] = 1;
-    s[[0, middle - 5]] = 1;
-    s[[0, middle - 4]] = 0;
-    s[[0, middle - 3]] = 0;
-    s[[0, middle - 2]] = 1;
-    s[[0, middle - 1]] = 0;
-    s[[0, middle - 0]] = 1;
-    s[[0, middle + 1]] = 0;
-    s[[0, middle + 2]] = 1;
-    s[[0, middle + 3]] = 1;
-    s[[0, middle + 4]] = 0;
-    s[[0, middle + 5]] = 0;
-    s[[0, middle + 6]] = 1;
-    s[[0, middle + 7]] = 1;
+    let middle = s.dim()[0] / 2;
+    // s[[0, middle - 7]] = 1;
+    // s[[0, middle - 6]] = 1;
+    // s[[0, middle - 5]] = 1;
+    // s[[0, middle - 4]] = 0;
+    // s[[0, middle - 3]] = 0;
+    // s[[0, middle - 2]] = 1;
+    // s[[0, middle - 1]] = 0;
+    s[[0, middle]] = 1;
+    // s[[0, middle + 1]] = 0;
+    // s[[0, middle + 2]] = 1;
+    // s[[0, middle + 3]] = 1;
+    // s[[0, middle + 4]] = 0;
+    // s[[0, middle + 5]] = 0;
+    // s[[0, middle + 6]] = 1;
+    // s[[0, middle + 7]] = 1;
   }
   pub fn randomize_space(&mut self) {
-    // TODO: redo without clone?
-    let mut s = self.space.clone();
+    let mut s = self.space.view_mut();
     // 2D automata?
     if s.axes().count() == 3usize {
       // 2D
       for x in 0..s.dim()[1] {
         for y in 0..s.dim()[1] {
-          let pix = random::<bool>() as u8;
-          s[[0, x, y]] = pix;
+          s[[0, x, y]] = random::<bool>() as u8;
         }
       }
     } else {
       // 1D
       for i in 0..s.dim()[0] {
-        let pix = random::<bool>() as u8;
-        s[[0, i]] = pix;
+        s[[0, i]] = random::<bool>() as u8;
       }
     }
-    self.space = s;
   }
+
   pub fn write_image(&self) {
     let __p = self.path();
     let _p = __p.parent().unwrap();
@@ -237,7 +246,7 @@ impl Simulation {
       fh = sp.dim()[2] as u16;
     }
     for state in 0..end {
-      println!("writing: {:?}", f);
+      println!("writing: {:?}\n", f);
       let mut frame = Frame::default();
       let mut sl = sp.view();
       frame.width = fw;
